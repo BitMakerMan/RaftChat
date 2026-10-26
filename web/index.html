@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Raft Chatroom</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Raft Chatroom</h1>
+  <div id="leader">leader: <b id="leaderName">—</b></div>
+</header>
+
+<section id="admin">
+  <input id="spawnId" placeholder="node id (e.g. n4)">
+  <input id="spawnPort" placeholder="port (optional)" type="number">
+  <button id="spawn">spawn node</button>
+  <button id="kill">kill selected node</button>
+  <span id="hint">nodes are discovered dynamically</span>
+</section>
+
+<section id="cluster">
+  <table id="nodes">
+    <thead><tr><th>node</th><th>role</th><th>term</th><th>commit</th><th>members</th><th>url</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<section id="chat">
+  <div id="composer">
+    <input id="user" placeholder="you">
+    <input id="text" placeholder="message">
+    <button id="send">send</button>
+  </div>
+  <ul id="messages"></ul>
+  <ul id="proposals"></ul>
+</section>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+:root { --bg:#101418; --panel:#161b22; --line:#2a3138; --text:#e6edf3; --dim:#8b949e; --accent:#3fb950; --warn:#d29922; }
+* { box-sizing: border-box; }
+body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--text); padding:16px; }
+h1 { font-size:18px; margin:0 0 8px; }
+header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
+section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:12px; }
+table { width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+tr.leader td { color:var(--accent); font-weight:600; }
+input { background:#0d1117; border:1px solid var(--line); color:var(--text); padding:6px 8px; border-radius:6px; }
+button { background:#21262d; border:1px solid var(--line); color:var(--text); padding:6px 10px; border-radius:6px; cursor:pointer; }
+button:hover { border-color:var(--accent); }
+ul { list-style:none; margin:0; padding:0; }
+li.msg { padding:8px; border-bottom:1px solid var(--line); }
+li.msg.tombstone { text-decoration:line-through; color:var(--dim); }
+.meta { display:flex; gap:8px; align-items:center; }
+.text { margin:4px 0; }
+.actions { display:flex; gap:6px; }
+.badge { padding:2px 8px; border-radius:999px; background:#0d1117; border:1px solid var(--line); }
+.badge.committed { color:var(--dim); }
+.badge.delivered, .badge.read, .badge.ack { color:var(--accent); }
+.badge.flagged { color:var(--warn); }
+.prop, .empty { padding:6px 8px; color:var(--dim); }
+code { color:var(--dim); }
+#composer { display:flex; gap:8px; margin-bottom:8px; }
+#hint { color:var(--dim); }
