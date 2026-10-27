@@ -1,113 +1,70 @@
 # Raft Chatroom
 
-A chatroom where **every participating node is a Raft cluster node**. Nodes
-collectively decide the state of messages: a message is only what the cluster
-has agreed it is.
+A chatroom where **every participant node is a Raft cluster node**. Nodes collectively
+decide the state of every message through replicated entries and quorum decisions.
 
-Python 3.13, standard library only. No third-party dependencies.
+The project is a single, dependency-free Python 3 package: no frameworks, no third-party
+libraries, no network calls in unit tests.
 
+```text
+nodes      : one process per cluster node, each with its own SQLite file
+consensus  : leader election + log replication + commit + snapshots (Raft)
+state      : chat state machine applied on every node, decided by quorum
+interface  : supervisor (spawn/kill/discovery) + CLI + HTML web UI
+tests      : 41 deterministic anti-regression tests + 16 docs-guard checks (57)
 ```
-run_supervisor.py   process registry + spawn/kill + web UI + client API
-run_node.py         one cluster node (its own SQLite file)
-cli.py              client for the cluster
-web/                HTML/JS UI served by the supervisor
-raft/               core, runtime, storage, state machine, net, supervisor
-tests/              anti-regression suite (run_tests.py)
-```
 
-## Run
+## Quick start
+
+Every command and every path in this manual is relative to the **git root** (the folder you
+clone). Do not hardcode the checkout name — start from the git root:
 
 ```bash
-python run_supervisor.py 8200          # UI + admin API at http://127.0.0.1:8200/
-python cli.py --supervisor http://127.0.0.1:8200 spawn --id n1
-python cli.py --supervisor http://127.0.0.1:8200 spawn --id n2
-python cli.py --supervisor http://127.0.0.1:8200 spawn --id n3
-python cli.py --supervisor http://127.0.0.1:8200 send --user alice --to bob --text "ciao" --msg m1 --cid c1
-python cli.py --supervisor http://127.0.0.1:8200 propose --user n1 --msg m1 --state delivered --proposal p1
-python cli.py --supervisor http://127.0.0.1:8200 vote --voter n1 --proposal p1
-python cli.py --supervisor http://127.0.0.1:8200 vote --voter n2 --proposal p1
-python cli.py --supervisor http://127.0.0.1:8200 read
-python cli.py --supervisor http://127.0.0.1:8200 kill --id n3
+python run_supervisor.py 8200            # supervisor + web UI
+# open http://127.0.0.1:8200/            (Spawn nodes, send messages, decide by quorum)
+
+python cli.py send --user alice --to bob --text "hello" --msg m1 --cid c1
+python cli.py propose --user n1 --msg m1 --state delivered --proposal p1
+python cli.py vote --voter n1 --proposal p1
+python cli.py vote --voter n2 --proposal p1
+python cli.py read
+python cli.py status
+python cli.py spawn --id n4
+python cli.py kill --id n4
 ```
 
-Or start nodes manually (dynamic discovery works through self-registration and
-seed/peer hints):
-
-```bash
-python run_node.py --id n1 --port 9001 --supervisor http://127.0.0.1:8200
-python run_node.py --id n2 --port 9002 --peers n1=http://127.0.0.1:9001
-python run_node.py --id n3 --port 9003 --peers n1=http://127.0.0.1:9001,n2=http://127.0.0.1:9002
-```
-
-Each node writes `data/node-<id>.db` (WAL mode): metadata, log entries, snapshots.
-
-## Tests
+Run the anti-regression suite:
 
 ```bash
 python run_tests.py
 ```
 
-39 tests: pure core (election, prevote, replication, commit, joint membership,
-compaction, snapshot install, reads), state machine, SQLite storage, real HTTP
-runtime, supervisor spawn/kill with real processes + dynamic discovery, CLI over
-HTTP, web UI contract. **Tests are guards: a red test means the implementation
-is wrong — never edit a test to make it pass.**
+## Manual
 
-## Message state machine
+| Doc | What it covers |
+|---|---|
+| [docs/01-overview.md](docs/01-overview.md) | What the system is, guarantees, non-goals |
+| [docs/02-architecture.md](docs/02-architecture.md) | Layers, module map, invariants, file tree |
+| [docs/03-raft-core.md](docs/03-raft-core.md) | Terms, votes, pre-vote, election, commit, snapshots, membership |
+| [docs/04-state-machine.md](docs/04-state-machine.md) | Chat FSM, rules, proposals, quorum decisions |
+| [docs/05-storage.md](docs/05-storage.md) | Storage interface, MemoryStorage, SQLite schema, compaction |
+| [docs/06-network-and-runtime.md](docs/06-network-and-runtime.md) | HTTP transport, RPC paths, runtime pump loop |
+| [docs/07-supervisor-and-api.md](docs/07-supervisor-and-api.md) | Every endpoint, payloads, responses, error semantics |
+| [docs/08-cli.md](docs/08-cli.md) | CLI commands, flags, exit codes |
+| [docs/09-web-ui.md](docs/09-web-ui.md) | Web UI behaviour and wiring |
+| [docs/10-testing.md](docs/10-testing.md) | Test policy, full inventory, how to run |
+| [docs/11-runbook.md](docs/11-runbook.md) | Operating the cluster step by step |
+| [docs/12-design-decisions.md](docs/12-design-decisions.md) | Why each design choice was made |
+| [docs/13-limitations.md](docs/13-limitations.md) | Known limits and risks |
+| [docs/14-contributing.md](docs/14-contributing.md) | Rules for changes, docs guard, checklist |
 
-```
-committed -> delivered -> read -> ack
-                    \-> flagged -> resolved
-                    \-> dropped (tombstone)
-edit: appends a revision, does not change state
-```
+## Non-negotiable rules
 
-- `committed` = the entry reached a Raft quorum.
-- `delivered`, `read`, `ack`, `flagged`, `resolved` are application decisions.
-- Contested transitions (`delivered`, `ack`, `flagged`, `resolved`, `dropped`)
-  need a proposal plus a decision from a majority in **every active config**.
-- Direct transitions: `read` only by a recipient, `edit` only by the author,
-  `dropped` by the author without a proposal.
-- Tombstoned messages cannot be changed. Replay of the same `command_id` is
-  idempotent.
-
-## API
-
-Supervisor (`http://127.0.0.1:8200`):
-
-```
-GET  /                      web UI
-GET  /admin/nodes           discovered nodes + registry
-POST /admin/register        self-registration (node id + url)
-POST /admin/spawn           {node_id, port?} -> new process
-POST /admin/kill            {node_id, force?} -> safe kill (leave first)
-POST /api/command           {type: submit|transition|propose|vote, ...}
-GET  /api/read              linearizable read from the leader
-POST /api/membership        {cnew: [...], joint: true}
-GET  /api/cluster           leader, members, per-node status
-GET  /api/status            per-node Raft status
-```
-
-Per-node Raft paths: `/raft/vote`, `/raft/append`, `/raft/snapshot`,
-`/raft/check`; client paths: `/client/command`, `/client/read`,
-`/client/commit`, `/cluster/join`, `/cluster/leave`, `/node/status`.
-
-## Design decisions
-
-- **Pure `RaftCore`**: no sockets, threads, wall clock or uncontrolled
-  randomness; `clock`, `rng`, `storage`, `state machine` are injected, so the
-  same core is testable deterministically (see `tests/sim.py`).
-- **Writes only on the leader**; followers reject and redirect.
-- **Linearizable reads** on the leader only, verified by a lease or a quorum `check`.
-- **Pre-vote** is enabled and never inflates the term.
-- **A heartbeat is not a vote**: `voted_for` changes only when a vote is granted.
-- **Joint membership**: a change is committed when a majority of *both* configs
-  acknowledges it; a new node joins as a non-member and learns membership from
-  the log, so a join can complete only once the new node replicates.
-- **Raft safety**: entries from a previous term are never committed directly.
-- **Disk storage per node** (SQLite + WAL), snapshotting and compaction, with a
-  `MemoryStorage` variant for deterministic tests.
-- **Supervisor**: real OS processes, self-registration for dynamic discovery,
-  safe kill = commit a membership leave through Raft before terminating.
-  `force: true` skips the leave and can cost the cluster its quorum.
-- **Single event loop per node**; no threads inside a node.
+1. Tests are never weakened to make code pass. A red test means the implementation is wrong.
+2. `raft/core.py` is pure: no sockets, no threads, no wall clock, no uncontrolled randomness.
+3. Only the leader accepts writes.
+4. A heartbeat is not a vote.
+5. A pre-vote never inflates the term.
+6. The manual must match the code — `tests/test_docs.py` fails if it does not.
+7. Instructions and paths in the manual are relative to the git root; no command may assume a
+   particular checkout folder name.
